@@ -1,0 +1,40 @@
+{
+  "name": "lm-look-maxxxing",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "npm run clean && next build",
+    "build:no-clean": "next build",
+    "build:win": "powershell -NoProfile -Command \"Remove-Item -Path .next,.next-build -Recurse -Force -ErrorAction SilentlyContinue; npx next build\"",
+    "start": "next start",
+    "lint": "next lint",
+    "clean": "rimraf .next .next-build"
+  },
+  "dependencies": {
+    "@iconify/react": "^6.0.2",
+    "@metamask/detect-provider": "^2.0.0",
+    "@solana/spl-token": "^0.4.14",
+    "@solana/wallet-adapter-base": "^0.9.23",
+    "@solana/wallet-adapter-react": "^0.15.35",
+    "@solana/wallet-adapter-wallets": "^0.19.32",
+    "@solana/web3.js": "^1.95.3",
+    "axios": "^1.6.2",
+    "next": "14.2.21",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-hot-toast": "^2.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10.0.1",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.21",
+    "postcss": "^8",
+    "rimraf": "^5",
+    "tailwindcss": "^3.3.0",
+    "typescript": "^5"
+  }
+}
