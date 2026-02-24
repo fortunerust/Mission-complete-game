@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { AppProps } from 'next/app';
 import Head from 'next/head';
-import { useRouter } from 'next/router';
+import Router from 'next/router';
 import { WalletProvider, useWallet } from '../context/WalletContext';
 import { CharacterProvider } from '../context/CharacterContext';
 import { GameSettingsProvider } from '../context/GameSettingsContext';
@@ -27,7 +27,6 @@ const toastOptions = {
 
 /** Shows TimeLoading while app/route is loading; enforces minimum 3s display before showing page. */
 function AppContent({ Component, pageProps }: AppProps) {
-  const router = useRouter();
   const { isReady: isWalletReady } = useWallet();
   const [isMounted, setIsMounted] = useState(false);
   const [isRouteChanging, setIsRouteChanging] = useState(false);
@@ -43,20 +42,23 @@ function AppContent({ Component, pageProps }: AppProps) {
     return () => clearTimeout(t);
   }, []);
 
+  // Handle route changes only on client side
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
     const handleStart = () => setIsRouteChanging(true);
     const handleComplete = () => setIsRouteChanging(false);
 
-    router.events.on('routeChangeStart', handleStart);
-    router.events.on('routeChangeComplete', handleComplete);
-    router.events.on('routeChangeError', handleComplete);
+    Router.events.on('routeChangeStart', handleStart);
+    Router.events.on('routeChangeComplete', handleComplete);
+    Router.events.on('routeChangeError', handleComplete);
 
     return () => {
-      router.events.off('routeChangeStart', handleStart);
-      router.events.off('routeChangeComplete', handleComplete);
-      router.events.off('routeChangeError', handleComplete);
+      Router.events.off('routeChangeStart', handleStart);
+      Router.events.off('routeChangeComplete', handleComplete);
+      Router.events.off('routeChangeError', handleComplete);
     };
-  }, [router.events]);
+  }, []);
 
   const showLoadingScreen = !isMounted || !isWalletReady || isRouteChanging;
 

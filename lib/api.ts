@@ -23,7 +23,6 @@ export const gameAPI = {
     api.patch('/player', { wallet, ...data }),
   getMissions: (mapId?: string) =>
     api.get('/missions', mapId != null ? { params: { mapId } } : {}),
-  getCards: (wallet: string) => api.get('/cards', { params: { wallet } }),
   getMaps: () => api.get('/maps'),
   getCharacters: () => api.get('/characters'),
   purchasePacks: (user: string, type: TransactionType, quantity: number, totalCost: number, txSignature: string) => api.post('/packs/purchase', { user, type, quantity, totalCost, txSignature }),

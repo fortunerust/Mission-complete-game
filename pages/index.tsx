@@ -165,10 +165,10 @@ export default function Home() {
 
   // Redirect to landing when wallet not connected
   useEffect(() => {
-    if (isReady && !address) {
+    if (router.isReady && isReady && !address) {
       router.replace('/landing');
     }
-  }, [isReady, address, router]);
+  }, [router.isReady, isReady, address, router]);
 
   // After Suspense resolves, show TimeLoading for 3s before game content
   useEffect(() => {
@@ -499,4 +499,8 @@ export default function Home() {
       </div>
     </Suspense>
   );
+}
+
+export async function getServerSideProps() {
+  return { props: {} };
 }

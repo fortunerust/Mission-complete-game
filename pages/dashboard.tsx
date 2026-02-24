@@ -272,3 +272,7 @@ export default function Dashboard() {
     </div>
   );
 }
+
+export async function getServerSideProps() {
+  return { props: {} };
+}

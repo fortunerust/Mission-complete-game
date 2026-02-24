@@ -10,10 +10,10 @@ export default function Landing() {
   const [showWalletModal, setShowWalletModal] = useState(false);
 
   useEffect(() => {
-    if (isConnected && address) {
+    if (router.isReady && isConnected && address) {
       router.replace('/');
     }
-  }, [isConnected, address, router]);
+  }, [router.isReady, isConnected, address, router]);
 
   return (
     <div
@@ -57,4 +57,8 @@ export default function Landing() {
       />
     </div>
   );
+}
+
+export async function getServerSideProps() {
+  return { props: {} };
 }

@@ -7,3 +7,7 @@ import WalletCheckingScreen from '../components/TimeLoading';
 export default function PreviewLoading() {
   return <WalletCheckingScreen />;
 }
+
+export async function getServerSideProps() {
+  return { props: {} };
+}
