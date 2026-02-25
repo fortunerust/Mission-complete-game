@@ -7,7 +7,6 @@ import {
   createAssociatedTokenAccountIdempotentInstruction,
   createTransferInstruction,
 } from '@solana/spl-token';
-import { gameAPI } from '../../lib/api';
 
 const CURRENCY_TOKEN_MINT =
   (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_CURRENCY_TOKEN_MINT) ||

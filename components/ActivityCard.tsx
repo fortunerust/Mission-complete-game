@@ -1,15 +1,9 @@
 import React from 'react';
 import { Icon } from '@iconify/react';
-
-export interface Activity {
-  name: string;
-  icon: string;
-  image: string;
-  stars: number;
-}
+import { Mission } from '@/types';
 
 interface ActivityCardProps {
-  activity: Activity;
+  activity: Mission;
   index: number;
   /** Map order (1 = Beach Side, 2 = Miami Nights, 3 = City Lights) for card position. */
   mapOrder: number;
@@ -19,7 +13,7 @@ interface ActivityCardProps {
   onSelect: () => void;
   onClose: () => void;
   /** Called when user clicks start; e.g. open missions modal and preselect this activity's mission. */
-  onStart?: (activity: Activity) => void;
+  onStart?: (activity: Mission) => void;
 }
 
 /** Card positions per map so activity cards align with landmarks. */
@@ -85,7 +79,7 @@ export default function ActivityCard({
             <div className="flex items-center gap-3">
               <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0">
                 <img
-                  src={activity.image}
+                  src={activity.imageSrc}
                   alt={activity.name}
                   className="w-full h-full object-cover"
                 />
@@ -131,7 +125,7 @@ export default function ActivityCard({
         >
           <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0">
             <img
-              src={activity.image}
+              src={activity.imageSrc}
               alt={activity.name}
               className="w-full h-full object-cover"
             />

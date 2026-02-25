@@ -1,22 +1,106 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { Icon } from '@iconify/react';
 import Button from './Button';
+import { gameAPI } from '../lib/api';
+import { toastError, toastSuccess } from '../lib/toast';
 
 interface NavigationProps {
   experience: number;
+  wallet?: string | null;
   onOpenCardsModal?: () => void;
   onOpenMissionsModal?: () => void;
   onOpenMapsModal?: () => void;
+  onClaimComplete?: () => void;
 }
 
-export default function Navigation({ experience, onOpenCardsModal, onOpenMissionsModal, onOpenMapsModal }: NavigationProps) {
+function formatTimer(remainingMs: number): string {
+  if (remainingMs <= 0) return '00 : 00 : 00';
+  const totalSec = Math.floor(remainingMs / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return [h, m, s].map((n) => String(n).padStart(2, '0')).join(' : ');
+}
+
+export default function Navigation({ experience, wallet, onOpenCardsModal, onOpenMissionsModal, onOpenMapsModal, onClaimComplete }: NavigationProps) {
   const [showMaxxedTooltip, setShowMaxxedTooltip] = useState(false);
   const [showCardsTooltip, setShowCardsTooltip] = useState(false);
   const [showMissionsTooltip, setShowMissionsTooltip] = useState(false);
   const [showMapsTooltip, setShowMapsTooltip] = useState(false);
+  const [totalClaimable, setTotalClaimable] = useState(0);
+  const [latestEndTime, setLatestEndTime] = useState<string | null>(null);
+  const [hasInProgress, setHasInProgress] = useState(false);
+  const [isClaiming, setIsClaiming] = useState(false);
+  const [timerTick, setTimerTick] = useState(Date.now());
 
   const progress = (experience % 1000) / 10;
+
+  // Fetch claimable info
+  useEffect(() => {
+    if (!wallet?.trim()) {
+      setTotalClaimable(0);
+      setLatestEndTime(null);
+      setHasInProgress(false);
+      return;
+    }
+
+    const fetchClaimableInfo = async () => {
+      try {
+        const res = await gameAPI.getClaimableInfo(wallet.trim());
+        setTotalClaimable(res.data.totalClaimable ?? 0);
+        setLatestEndTime(res.data.latestEndTime ?? null);
+        setHasInProgress(res.data.hasInProgress ?? false);
+      } catch (err) {
+        console.error('Failed to fetch claimable info:', err);
+      }
+    };
+
+    fetchClaimableInfo();
+    const interval = setInterval(fetchClaimableInfo, 5000); // Refresh every 5 seconds
+    return () => clearInterval(interval);
+  }, [wallet]);
+
+  // Timer for in-progress missions
+  useEffect(() => {
+    if (!hasInProgress || !latestEndTime) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setTimerTick(Date.now());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [hasInProgress, latestEndTime]);
+
+  const remainingMs = latestEndTime ? Math.max(0, new Date(latestEndTime).getTime() - timerTick) : 0;
+  const canClaim = totalClaimable > 0 && (!hasInProgress || remainingMs <= 0);
+
+  const handleClaim = async () => {
+    if (!wallet?.trim() || isClaiming || !canClaim) return;
+
+    setIsClaiming(true);
+    try {
+      const res = await gameAPI.claimTokens(wallet.trim());
+      if (res.data.success) {
+        toastSuccess(`Successfully claimed ${res.data.totalClaimed} tokens!`);
+        setTotalClaimable(0);
+        onClaimComplete?.();
+        // Refresh claimable info
+        const infoRes = await gameAPI.getClaimableInfo(wallet.trim());
+        setTotalClaimable(infoRes.data.totalClaimable ?? 0);
+        setLatestEndTime(infoRes.data.latestEndTime ?? null);
+        setHasInProgress(infoRes.data.hasInProgress ?? false);
+      } else {
+        toastError(res.data.error || 'Failed to claim tokens');
+      }
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to claim tokens');
+    } finally {
+      setIsClaiming(false);
+    }
+  };
 
   return (
     <nav className="fixed top-[calc(100%-98px)] left-[35px] right-[35px] z-40">
@@ -133,12 +217,27 @@ export default function Navigation({ experience, onOpenCardsModal, onOpenMission
             <div className="text-center flex flex-col justify-center items-center w-full">
               <div className="flex items-center justify-between rounded-lg px-4 py-2.5 bg-[#1F1F38] w-full">
                 <p className="text-white font-medium font-anton-sc text-xl">YIELD</p>
-                <p className="text-[#FF5098] font-medium font-anton-sc text-xl">32.4</p>
+                <p className="text-[#FF5098] font-medium font-anton-sc text-xl">{totalClaimable.toFixed(1)}</p>
               </div>
-              <div className="text-[#FF98C2] font-anton-sc text-xl font-medium bg-[#1F1F38B2] rounded-bl-lg rounded-br-lg px-2 py-2.5 w-fit">05 : 43 : 21</div>
+              {hasInProgress && latestEndTime && remainingMs > 0 ? (
+                <div className="text-[#FF98C2] font-anton-sc text-xl font-medium bg-[#1F1F38B2] rounded-bl-lg rounded-br-lg px-2 py-2.5 w-fit">{formatTimer(remainingMs)}</div>
+              ) : (
+                <div className="text-[#FF98C2] font-anton-sc text-xl font-medium bg-[#1F1F38B2] rounded-bl-lg rounded-br-lg px-2 py-2.5 w-fit">{formatTimer(0)}</div>
+              )}
             </div>
-            <Button variant="primary" className="w-fit mx-auto px-10 py-2 rounded-md font-anton font-medium text-lg">
-              CLAIM
+            <Button
+              variant="primary"
+              className="w-fit mx-auto px-10 py-2 rounded-md font-anton font-medium text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={handleClaim}
+              disabled={!canClaim || isClaiming}
+            >
+              {isClaiming ? (
+                <>
+                  CLAIMING...
+                </>
+              ) : (
+                'CLAIM'
+              )}
             </Button>
           </div>
         </div>

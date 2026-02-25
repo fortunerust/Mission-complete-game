@@ -1,16 +1,21 @@
 import React from 'react';
+import { Icon } from '@iconify/react';
 
 export interface CharacterItemProps {
   name: string;
+  price: number;
   imageSrc: string;
   selected?: boolean;
+  purchased?: boolean;
   onClick?: () => void;
 }
 
 export default function CharacterItem({
   name,
+  price,
   imageSrc,
   selected = false,
+  purchased = false,
   onClick,
 }: CharacterItemProps) {
   return (
@@ -28,12 +33,22 @@ export default function CharacterItem({
         className="absolute inset-0 bg-cover bg-center"
         style={{ backgroundImage: 'url(/images/characters/character-bg.svg)' }}
       />
-      {/* Blue overlay when selected */}
       {selected && (
         <div
-          className="absolute inset-0 bg-[#3399FF] opacity-20 pointer-events-none"
+          className="absolute inset-0 bg-gradient-to-t from-[#2E53FB] to-transparent pointer-events-none"
           aria-hidden
         />
+      )}
+      {/* Price badge - show when not purchased */}
+      {!purchased && (
+        <div className="absolute top-1 right-1 z-10 bg-[#0A1128]/90 border border-[#3399FF] rounded-lg px-1 py-0.5 shadow-lg backdrop-blur-sm">
+          <div className="flex items-center gap-0.5">
+            <Icon icon="mdi:dollar" width={8} height={8} className="text-[#3399FF]" />
+            <span className="text-[#3399FF] font-medium font-anton text-[6px]">
+              {price.toLocaleString()}
+            </span>
+          </div>
+        </div>
       )}
       {/* Character image */}
       <div className="relative flex-1 flex items-center justify-center min-h-0 pt-2">

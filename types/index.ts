@@ -57,6 +57,7 @@ export interface Character {
   imageSrc: string;
   level: number;
   order: number;
+  price: number;
 }
 
 export interface PackData {
@@ -73,6 +74,8 @@ export interface GameHistoryEntry {
   endTime: string;
   completedAt?: string;
   expAwarded?: number;
+  tokenReward?: number;
+  claimedToken?: boolean;
 }
 
 export interface CardHistory {

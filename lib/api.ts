@@ -13,6 +13,7 @@ const api = axios.create({
 /** Transaction types for backend (saved in MongoDB). */
 export type TransactionType =
   | 'pack_purchase'
+  | 'character_purchase'
   | 'mission_start'
   | 'mission_complete'
   | string;
@@ -25,6 +26,8 @@ export const gameAPI = {
     api.get('/missions', mapId != null ? { params: { mapId } } : {}),
   getMaps: () => api.get('/maps'),
   getCharacters: () => api.get('/characters'),
+  validateCharacterPurchase: (wallet: string, characterId: string) => api.get('/characters/validate-purchase', { params: { wallet, characterId } }),
+  purchaseCharacter: (user: string, type: TransactionType, characterId: string, totalCost: number, txSignature: string) => api.post('/characters/purchase', { user, type, characterId, totalCost, txSignature }),
   purchasePacks: (user: string, type: TransactionType, quantity: number, totalCost: number, txSignature: string) => api.post('/packs/purchase', { user, type, quantity, totalCost, txSignature }),
   /** Record a user transaction (saved in DB by type). */
   recordTransaction: (
@@ -48,6 +51,12 @@ export const gameAPI = {
   /** Fetch recent mission completions for this wallet (from cron). Consumes and returns; use when mission completes in UI. */
   getRecentCompletions: (wallet: string) =>
     api.get('/game-history/recent-completions', { params: { wallet } }),
+  /** Get claimable tokens info (total unclaimed tokens and latest endTime if in-progress). */
+  getClaimableInfo: (wallet: string) =>
+    api.get('/game-history/claimable-info', { params: { wallet } }),
+  /** Claim tokens - transfers tokens from backend wallet to user wallet. */
+  claimTokens: (wallet: string) =>
+    api.post('/game-history/claim-tokens', { wallet }),
 };
 
 export default api;

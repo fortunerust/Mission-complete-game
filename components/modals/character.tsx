@@ -1,8 +1,25 @@
 import React, { useState } from 'react';
 import { Icon } from '@iconify/react';
+import { PublicKey, Transaction } from '@solana/web3.js';
+import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import {
+  getAssociatedTokenAddressSync,
+  createAssociatedTokenAccountIdempotentInstruction,
+  createTransferInstruction,
+} from '@solana/spl-token';
 import Button from '../Button';
 import CharacterItem from '../CharacterItem';
 import { Character } from '@/types';
+import { gameAPI } from '@/lib/api';
+import { toastError } from '@/lib/toast';
+
+const CURRENCY_TOKEN_MINT =
+  (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_CURRENCY_TOKEN_MINT) ||
+  '7MFWQ1jqWVv23UjKibyz2vo2FtaovtJaik4jp6BrWvLX';
+const CURRENCY_TOKEN_DECIMALS = typeof process !== 'undefined' && process.env.NEXT_PUBLIC_CURRENCY_TOKEN_DECIMALS
+  ? Number(process.env.NEXT_PUBLIC_CURRENCY_TOKEN_DECIMALS)
+  : 6;
+const PLATFORM_WALLET = (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_PLATFORM_WALLET_ADDRESS) || '';
 
 export interface CharacterModalProps {
   isOpen: boolean;
@@ -17,6 +34,13 @@ export interface CharacterModalProps {
   characterImage?: string;
   /** List from API (id, name, imageSrc); when provided, used instead of default grid. */
   characters?: Character[];
+  purchasedCharacters: string[];
+  /** Wallet address for purchase */
+  wallet?: string;
+  /** Current token balance */
+  balance?: number;
+  /** Called after successful character purchase to refresh data */
+  onPurchaseComplete?: (purchaseData?: any) => void;
   /** Called when user clicks APPLY with the selected character. May return a Promise so the modal can show loading until done. */
   onApplyCharacter?: (character: Character) => void | Promise<unknown>;
 }
@@ -40,30 +64,135 @@ export default function CharacterModal({
   level,
   characterImage = '/images/characters/chad.svg',
   characters: charactersProp,
+  purchasedCharacters,
+  wallet,
+  balance = 0,
+  onPurchaseComplete,
   onApplyCharacter,
 }: CharacterModalProps) {
+  const { publicKey, sendTransaction } = useWallet();
+  const { connection } = useConnection();
   const [selectedCharacterIndex, setSelectedCharacterIndex] = useState(() =>
     charactersProp?.findIndex((c) => c._id ?? c.name === characterImage) ?? 0
   );
+  const [isPurchasing, setIsPurchasing] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
 
   const handleApply = async () => {
     const selectedCharacter = charactersProp?.[selectedCharacterIndex];
     if (selectedCharacter == null) return;
-    setIsApplying(true);
-    try {
-      const result = onApplyCharacter?.(selectedCharacter);
-      if (result != null && typeof (result as Promise<unknown>).then === 'function') {
-        await (result as Promise<unknown>);
+    const isPurchased = purchasedCharacters.includes(selectedCharacter._id ?? '');
+    
+    // If purchased, apply character without payment
+    if (isPurchased) {
+      setIsApplying(true);
+      try {
+        const result = onApplyCharacter?.(selectedCharacter);
+        if (result != null && typeof (result as Promise<unknown>).then === 'function') {
+          await (result as Promise<unknown>);
+        }
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : 'FAILED TO APPLY CHARACTER';
+        toastError(reason);
+      } finally {
+        setIsApplying(false);
       }
-    } finally {
-      setIsApplying(false);
+      return;
+    }
+
+    // If not purchased, handle purchase
+    if (!wallet || !selectedCharacter._id) {
+      toastError('Wallet not connected or character ID missing');
+      return;
+    }
+
+    if (isPurchasing) return;
+
+    // Validate purchase with backend first
+    try {
+      const validationRes = await gameAPI.validateCharacterPurchase(wallet, selectedCharacter._id);
+      const { price } = validationRes.data;
+      
+      if (balance < price) {
+        toastError('NOT ENOUGH COINS');
+        return;
+      }
+
+      if (!publicKey || !sendTransaction) {
+        toastError('WALLET NOT CONNECTED');
+        return;
+      }
+
+      if (!PLATFORM_WALLET) {
+        toastError('PLATFORM WALLET NOT CONFIGURED');
+        return;
+      }
+
+      setIsPurchasing(true);
+
+      // Create and send transaction
+      const mint = new PublicKey(CURRENCY_TOKEN_MINT);
+      const platformPubkey = new PublicKey(PLATFORM_WALLET);
+      const sourceAta = getAssociatedTokenAddressSync(mint, publicKey);
+      const destAta = getAssociatedTokenAddressSync(mint, platformPubkey);
+      const rawAmount = BigInt(Math.floor(price * 10 ** CURRENCY_TOKEN_DECIMALS));
+
+      const tx = new Transaction();
+      tx.add(
+        createAssociatedTokenAccountIdempotentInstruction(publicKey, destAta, platformPubkey, mint)
+      );
+      tx.add(createTransferInstruction(sourceAta, destAta, publicKey, rawAmount));
+
+      const sig = await sendTransaction(tx, connection, { skipPreflight: false, maxRetries: 3 });
+      const confirmed = await connection.confirmTransaction(sig, 'confirmed');
+      if (!confirmed) {
+        toastError('TRANSACTION FAILED');
+        setIsPurchasing(false);
+        return;
+      }
+
+      // Complete purchase on backend
+      const maxRetries = 5;
+      let lastErr: unknown;
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          const purchaseRes = await gameAPI.purchaseCharacter(wallet, 'character_purchase', selectedCharacter._id, price, sig);
+          if (purchaseRes.data.success) {
+            onPurchaseComplete?.(purchaseRes.data);
+            setSelectedCharacterIndex(selectedCharacterIndex);
+            setIsPurchasing(false);
+            return;
+          } else {
+            toastError('PURCHASE FAILED');
+            setIsPurchasing(false);
+            return;
+          }
+        } catch (err) {
+          lastErr = err;
+          if (attempt < maxRetries) {
+            await new Promise((r) => setTimeout(r, 800 * attempt));
+          }
+        }
+      }
+      const reason = lastErr instanceof Error ? lastErr.message : 'TRANSACTION FAILED';
+      toastError(reason.length > 40 ? 'BACKEND SYNC FAILED' : reason);
+      setIsPurchasing(false);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : 'PURCHASE VALIDATION FAILED';
+      toastError(reason);
+      setIsPurchasing(false);
     }
   };
 
   if (!isOpen) return null;
 
   const filledSegments = getFilledSegments(progress);
+  
+  // Get the currently selected character
+  const selectedCharacter = charactersProp?.[selectedCharacterIndex];
+  const displayName = selectedCharacter?.name ?? name;
+  const displayImage = selectedCharacter?.imageSrc ?? characterImage;
+  const displayLevel = selectedCharacter?.level ?? level;
 
   return (
     <div
@@ -92,8 +221,8 @@ export default function CharacterModal({
               <div className="flex flex-col gap-2">
                 <div className="px-2 pt-1 pb-2 bg-primary-darker w-[220px] h-[48px] rounded-tr-xl rounded-tl-xl">
                   <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="text-white font-normal uppercase text-xl">{name}</span>
-                    <span className="text-[#95A2FF] font-medium font-anton uppercase shrink-0 text-sm">LVL {level}</span>
+                    <span className="text-white font-normal uppercase text-xl">{displayName}</span>
+                    <span className="text-[#95A2FF] font-medium font-anton uppercase shrink-0 text-sm">LVL {displayLevel}</span>
                   </div>
                   <div className="flex items-center justify-start gap-1">
                     {Array.from({ length: 5 }).map((_, index) => (
@@ -143,8 +272,8 @@ export default function CharacterModal({
                     {/* Character image - left (current/selected character) */}
                     <div className="flex items-center justify-center flex-shrink-0">
                       <img
-                        src={characterImage}
-                        alt="Character"
+                        src={displayImage}
+                        alt={displayName}
                         className="w-[220px] h-[420px] object-contain"
                       />
                     </div>
@@ -281,7 +410,7 @@ export default function CharacterModal({
               <div className="flex flex-wrap gap-4 rounded-2xl bg-[#09091EE5] px-6 py-8 w-full overflow-auto min-h-0 flex-1 hide-scrollbar">
                 {charactersProp?.map((character, index) => (
                   <div key={character._id != null ? `char-${character._id}` : `${character.name}-${index}`} className="">
-                    <CharacterItem name={character.name} imageSrc={character.imageSrc} selected={selectedCharacterIndex === index} onClick={() => setSelectedCharacterIndex(index)} />
+                    <CharacterItem name={character.name} price={character.price} imageSrc={character.imageSrc} selected={selectedCharacterIndex === index} purchased={purchasedCharacters.includes(character._id ?? '')} onClick={() => setSelectedCharacterIndex(index)} />
                   </div>
                 ))}
               </div>
@@ -289,9 +418,9 @@ export default function CharacterModal({
                 variant="primary"
                 className="w-fit border-2 border-[#FD8BBA] rounded-lg font-anton uppercase text-md font-medium px-12 py-2 min-w-[120px] flex items-center justify-center gap-2"
                 onClick={handleApply}
-                disabled={isApplying || level < (charactersProp?.[selectedCharacterIndex]?.level ?? 1)}
+                disabled={isPurchasing || isApplying || level < (charactersProp?.[selectedCharacterIndex]?.level ?? 1)}
               >
-                {isApplying ? (
+                {isPurchasing || isApplying ? (
                   <Icon icon="eos-icons:bubble-loading" className="text-white" width={24} height={24} aria-hidden />
                 ) : (
                   'APPLY'

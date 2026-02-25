@@ -3,7 +3,8 @@ import { Icon } from '@iconify/react';
 import Button from '../Button';
 import { gameAPI } from '../../lib/api';
 import { toastError, toastSuccess } from '../../lib/toast';
-import { GameHistoryEntry, Map, Mission } from '../../types';
+import { GameHistoryEntry, Mission } from '../../types';
+import type { Map } from '../../types';
 
 /** Returns missions for a map with unique ids and mapId set. Missions on different maps do not relate. */
 async function getMissionsForMap(mapId?: string): Promise<Mission[]> {
@@ -13,16 +14,22 @@ async function getMissionsForMap(mapId?: string): Promise<Mission[]> {
   return [];
 }
 
-/** Parse "2 HRS" / "1 HR" to hours number. */
+/** Parse "2 HRS" / "1 HR" / "0.005 HRS" to hours number (supports decimals including values < 1). */
 function parseDurationHours(duration: string): number {
-  const match = duration.match(/^(\d+)\s*HR(?:S)?$/i);
-  return match ? Math.max(1, parseInt(match[1], 10)) : 2;
+  const match = duration.match(/^(\d+(?:\.\d+)?)\s*HR(?:S)?$/i);
+  if (match) {
+    const hours = parseFloat(match[1]);
+    return hours > 0 ? hours : 2; // Ensure positive value, default to 2 if 0 or negative
+  }
+  return 2;
 }
 
-/** "2 HRS" -> "2 hours", "1 HR" -> "1 hour". */
+/** "2 HRS" -> "2 hours", "1 HR" -> "1 hour", "0.005 HRS" -> "0.005 hours". */
 function durationToConfirmText(duration: string): { value: string; unit: string } {
   const h = parseDurationHours(duration);
-  return { value: String(h), unit: h === 1 ? 'hour' : 'hours' };
+  // Format decimal values nicely (remove trailing zeros if whole number)
+  const formattedValue = h % 1 === 0 ? String(Math.floor(h)) : String(h);
+  return { value: formattedValue, unit: h === 1 ? 'hour' : 'hours' };
 }
 
 function formatTimer(remainingMs: number): string {
@@ -141,6 +148,7 @@ export default function MissionsModal({
   const [gameHistory, setGameHistory] = useState<GameHistoryEntry[]>([]);
   const [missionsInProgress, setMissionsInProgress] = useState<Array<{ mission: Mission; endTimeMs: number }>>([]);
   const [timerTick, setTimerTick] = useState(0);
+  const [loadingCompletions, setLoadingCompletions] = useState<Set<string>>(new Set()); // Track missions loading completion data
 
   useEffect(() => {
     if (missionsProp) {
@@ -204,14 +212,135 @@ export default function MissionsModal({
         const completed = prev.filter((entry) => now >= entry.endTimeMs);
         if (completed.length > 0 && wallet?.trim()) {
           const w = wallet.trim();
+          
+          // Immediately add to gameHistory as completed (optimistic update) - show completion state right away
+          completed.forEach((entry) => {
+            const missionId = String(entry.mission._id ?? entry.mission.name ?? '');
+            if (missionId) {
+              // Mark as loading
+              setLoadingCompletions((prev) => new Set(prev).add(missionId));
+              
+              // Add optimistic completion entry
+              setGameHistory((prevHistory) => {
+                const exists = prevHistory.some((g) => {
+                  const gMid = typeof g.missionId === 'string' ? g.missionId : (g.missionId as Mission)?._id;
+                  return String(gMid ?? '') === missionId && g.gameStation === 'completed';
+                });
+                
+                if (!exists) {
+                  const tempCompleted: GameHistoryEntry = {
+                    _id: `temp-${Date.now()}-${missionId}`,
+                    player: w,
+                    missionId: missionId,
+                    gameStation: 'completed',
+                    startTime: new Date(now - (entry.endTimeMs - now)).toISOString(),
+                    endTime: new Date(entry.endTimeMs).toISOString(),
+                    completedAt: new Date(now).toISOString(),
+                  };
+                  return [...prevHistory, tempCompleted];
+                }
+                return prevHistory;
+              });
+            }
+          });
+          
+          // Then fetch actual completion data with rewards from backend
           queueMicrotask(() => {
             gameAPI.getRecentCompletions(w).then((res) => {
-              const list = Array.isArray(res.data?.completed) ? res.data.completed : [];
-              setGameHistory(list);
+              const newCompleted = Array.isArray(res.data?.completed) ? res.data.completed : [];
+              
+              // Merge backend data with existing gameHistory (update temp entries with real rewards)
+              setGameHistory((prevHistory) => {
+                // Helper to normalize missionId to string for comparison
+                // Handles: string, Mission object with _id, ObjectId-like objects
+                const normalizeMissionId = (missionId: string | Mission | unknown): string => {
+                  if (typeof missionId === 'string') return missionId.trim();
+                  if (missionId && typeof missionId === 'object') {
+                    const m = missionId as Record<string, unknown>;
+                    // Check for _id property (Mongoose ObjectId or populated Mission)
+                    if (m._id) {
+                      const id = m._id;
+                      // Handle ObjectId objects that have toString()
+                      if (typeof id === 'object' && 'toString' in id && typeof id.toString === 'function') {
+                        return id.toString();
+                      }
+                      return String(id);
+                    }
+                  }
+                  return '';
+                };
+                
+                // Create a lookup map of backend completions by mission ID
+                const backendLookup = new Map<string, GameHistoryEntry>();
+                newCompleted.forEach((g: GameHistoryEntry) => {
+                  const mid = normalizeMissionId(g.missionId);
+                  if (mid) {
+                    backendLookup.set(mid, g);
+                  }
+                });
+                
+                // Update existing entries or add new ones - ensure completion state is preserved
+                const updated = prevHistory.map((g: GameHistoryEntry) => {
+                  const gMid = normalizeMissionId(g.missionId);
+                  const backendEntry = backendLookup.get(gMid);
+                                    
+                  // Replace temp entries with backend data (which includes rewards)
+                  if (backendEntry) {
+                    // Merge backend data (which includes expAwarded) with completion state
+                    const merged: GameHistoryEntry = {
+                      ...backendEntry,
+                      gameStation: 'completed' as const,
+                      // Explicitly ensure expAwarded is included from backend
+                      expAwarded: backendEntry.expAwarded ?? g.expAwarded,
+                    };
+                    return merged;
+                  }
+                  // Keep existing entry if no backend data (preserve completion state)
+                  return g;
+                });
+                
+                // Add any new completions from backend that aren't in the list
+                const existingIds = new Set(
+                  updated.map((g: GameHistoryEntry) => normalizeMissionId(g.missionId))
+                );
+                
+                const toAdd = newCompleted
+                  .filter((g: GameHistoryEntry) => {
+                    const mid = normalizeMissionId(g.missionId);
+                    return mid && !existingIds.has(mid);
+                  })
+                  .map((g: GameHistoryEntry) => ({
+                    ...g,
+                    gameStation: 'completed' as const, // Ensure completion state
+                  }));
+                
+                console.log("🚀 ~ Final result - updated count:", updated.length, "toAdd count:", toAdd.length);
+                
+                return [...updated, ...toAdd];
+              });
+              
+              // Clear loading state for completed missions
+              completed.forEach((entry) => {
+                const missionId = String(entry.mission._id ?? entry.mission.name ?? '');
+                setLoadingCompletions((prev) => {
+                  const next = new Set(prev);
+                  next.delete(missionId);
+                  return next;
+                });
+              });
+              
               onMissionCompleted?.(res.data.user);
-              toastSuccess('Completions refreshed successfully!');
+              toastSuccess('Mission completed!');
             }).catch((err) => {
-              setGameHistory([]);
+              // Clear loading state on error
+              completed.forEach((entry) => {
+                const missionId = String(entry.mission._id ?? entry.mission.name ?? '');
+                setLoadingCompletions((prev) => {
+                  const next = new Set(prev);
+                  next.delete(missionId);
+                  return next;
+                });
+              });
               toastError('Could not refresh completions.', err);
               onMissionCompleted?.(w);
             });
@@ -360,7 +489,15 @@ export default function MissionsModal({
                             </div>
                             <span className="text-white font-medium font-anton text-xl">{balance.toLocaleString()}</span>
                           </div>
-                          <span className="absolute right-[20%] text-[#F7237A] font-bold font-anton text-2xl">{gameHistory.find((game) => (typeof game.missionId === 'string' ? game.missionId : game.missionId?._id) === selected._id && game.gameStation === 'completed')?.expAwarded?.toLocaleString()}</span>
+                          {loadingCompletions.has(String(selected._id ?? '')) ? (
+                            <div className="absolute right-[20%] flex items-center justify-center">
+                              <Icon icon="eos-icons:bubble-loading" className="text-[#F7237A]" width={32} height={32} />
+                            </div>
+                          ) : (
+                            <span className="absolute right-[20%] text-[#F7237A] font-bold font-anton text-2xl">
+                              {gameHistory.find((game) => (typeof game.missionId === 'string' ? game.missionId : game.missionId?._id) === selected._id && game.gameStation === 'completed')?.expAwarded?.toLocaleString() ?? '0'}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>

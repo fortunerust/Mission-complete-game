@@ -7,7 +7,7 @@ import { useConnection } from '@solana/wallet-adapter-react';
 import Header from '../components/Header';
 import CharacterPanel from '../components/CharacterPanel';
 import Navigation from '../components/Navigation';
-import CityActivities, { Activity } from '../components/CityActivities';
+import CityActivities from '../components/CityActivities';
 import PacksModal from '../components/modals/packs';
 import CardsModal from '../components/modals/cards';
 import CharacterModal from '../components/modals/character';
@@ -41,7 +41,7 @@ export default function Home() {
   const [currentMap, setCurrentMap] = useState<Map>({ name: 'BEACH SIDE', imageSrc: '/images/maps/map1.png', order: 1, unlocked: true, selected: true });
   const [missionsForMap, setMissionsForMap] = useState<Mission[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
-  const [selectedActivity, setSelectedActivity] = useState<{ activity: Activity; index: number } | null>(null);
+  const [selectedActivity, setSelectedActivity] = useState<{ activity: Mission; index: number } | null>(null);
   const expandedCardRef = useRef<HTMLDivElement>(null);
 
   // Close expanded activity when user clicks outside the expanded card
@@ -69,6 +69,7 @@ export default function Home() {
     level: 1,
     cardsInUse: [] as Card[],
     cardsPurchased: [] as Card[],
+    purchasedCharacters: [] as string[],
   });
   const [tokenBalance, setTokenBalance] = useState<number>(0);
   const [balanceRefreshKey, setBalanceRefreshKey] = useState(0);
@@ -129,6 +130,7 @@ export default function Home() {
         level: p.level ?? prev.level,
         cardsInUse: p.cardsInUse ?? prev.cardsInUse,
         cardsPurchased: p.cardsPurchased ?? prev.cardsPurchased,
+        purchasedCharacters: p.purchasedCharacters ?? prev.purchasedCharacters,
       }));
       const map = p.map;
       if (map) setCurrentMap(map);
@@ -153,6 +155,7 @@ export default function Home() {
   useEffect(() => {
     let cancelled = false;
     gameAPI.getCharacters().then((res) => {
+      console.log("🚀 ~ Home ~ res.data:", res.data)
       if (!cancelled && Array.isArray(res.data)) setCharacters(res.data);
     }).catch(() => { });
     return () => { cancelled = true; };
@@ -254,27 +257,27 @@ export default function Home() {
     overflowY = 'auto';
   }
 
-  const ACTIVITIES_BY_MAP: Record<number, Activity[]> = {
-    1: [
-      { name: 'GYM SESSION', icon: 'mdi:dumbbell', image: '/images/missioins/gym.svg', stars: 0 },
-      { name: 'LOCK IN', icon: 'mdi:brain', image: '/images/missioins/lockin.svg', stars: 0 },
-      { name: 'PERPS TRADING', icon: 'mdi:chart-line-variant', image: '/images/missioins/perps.svg', stars: 0 },
-      { name: 'POOL PARTY', icon: 'mdi:pool', image: '/images/missioins/pool.svg', stars: 0 },
-    ],
-    2: [
-      { name: 'GYM SESSION', icon: 'mdi:dumbbell', image: '/images/missioins/gym.svg', stars: 0 },
-      { name: 'LOCK IN', icon: 'mdi:brain', image: '/images/missioins/lockin.svg', stars: 0 },
-      { name: 'PERPS TRADING', icon: 'mdi:chart-line-variant', image: '/images/missioins/perps.svg', stars: 0 },
-      { name: 'POOL PARTY', icon: 'mdi:pool', image: '/images/missioins/pool.svg', stars: 0 },
-    ],
-    3: [
-      { name: 'LOCK IN', icon: 'mdi:brain', image: '/images/missioins/lockin.svg', stars: 0 },
-      { name: 'GYM SESSION', icon: 'mdi:dumbbell', image: '/images/missioins/gym.svg', stars: 0 },
-      { name: 'POOL PARTY', icon: 'mdi:pool', image: '/images/missioins/pool.svg', stars: 0 },
-      { name: 'PERPS TRADING', icon: 'mdi:chart-line-variant', image: '/images/missioins/perps.svg', stars: 0 },
-    ],
-  };
-  const activities = ACTIVITIES_BY_MAP[currentMap?.order ?? 1] ?? ACTIVITIES_BY_MAP[1];
+  // const ACTIVITIES_BY_MAP: Record<number, Activity[]> = {
+  //   1: [
+  //     { name: 'GYM SESSION', icon: 'mdi:dumbbell', image: '/images/missioins/gym.svg', stars: 0 },
+  //     { name: 'LOCK IN', icon: 'mdi:brain', image: '/images/missioins/lockin.svg', stars: 0 },
+  //     { name: 'PERPS TRADING', icon: 'mdi:chart-line-variant', image: '/images/missioins/perps.svg', stars: 0 },
+  //     { name: 'POOL PARTY', icon: 'mdi:pool', image: '/images/missioins/pool.svg', stars: 0 },
+  //   ],
+  //   2: [
+  //     { name: 'GYM SESSION', icon: 'mdi:dumbbell', image: '/images/missioins/gym.svg', stars: 0 },
+  //     { name: 'LOCK IN', icon: 'mdi:brain', image: '/images/missioins/lockin.svg', stars: 0 },
+  //     { name: 'PERPS TRADING', icon: 'mdi:chart-line-variant', image: '/images/missioins/perps.svg', stars: 0 },
+  //     { name: 'POOL PARTY', icon: 'mdi:pool', image: '/images/missioins/pool.svg', stars: 0 },
+  //   ],
+  //   3: [
+  //     { name: 'LOCK IN', icon: 'mdi:brain', image: '/images/missioins/lockin.svg', stars: 0 },
+  //     { name: 'GYM SESSION', icon: 'mdi:dumbbell', image: '/images/missioins/gym.svg', stars: 0 },
+  //     { name: 'POOL PARTY', icon: 'mdi:pool', image: '/images/missioins/pool.svg', stars: 0 },
+  //     { name: 'PERPS TRADING', icon: 'mdi:chart-line-variant', image: '/images/missioins/perps.svg', stars: 0 },
+  //   ],
+  // };
+  const activities = missionsForMap
 
   const handleConnectWallet = () => setShowWalletModal(true);
 
@@ -293,7 +296,7 @@ export default function Home() {
         setPlayerData((prev) => ({ 
           ...prev, 
           packs: p.packs,
-          cardsPurchased: p.cardHistory
+          cardsPurchased: [...prev.cardsPurchased, ...p.cardHistory]
         }));
       })
       .catch((err) => {
@@ -379,9 +382,9 @@ export default function Home() {
                 containerHeight={containerHeight}
                 selectedActivity={selectedActivity}
                 currentMap={currentMap ?? undefined}
-                onSelectActivity={(activity, index) => setSelectedActivity({ activity, index })}
+                onSelectActivity={(activity: Mission, index: number) => setSelectedActivity({ activity, index })}
                 onCloseActivity={() => setSelectedActivity(null)}
-                onStartActivity={(activity) => {
+                onStartActivity={(activity: Mission) => {
                   setShowMissionsModal(true);
                   setMissionsPreselectedName(activity.name);
                 }}
@@ -390,9 +393,11 @@ export default function Home() {
 
           <Navigation
             experience={playerData.experience}
+            wallet={address}
             onOpenCardsModal={() => setShowCardsModal(true)}
             onOpenMissionsModal={() => setShowMissionsModal(true)}
             onOpenMapsModal={() => setShowMapsModal(true)}
+            onClaimComplete={() => setBalanceRefreshKey((k) => k + 1)}
           />
 
           {/* Character Modal */}
@@ -404,9 +409,25 @@ export default function Home() {
             cards={playerData.cards}
             packs={playerData.packs}
             progress={(playerData.experience % 1000) / 10}
+            wallet={address ?? undefined}
+            balance={tokenBalance}
+            onPurchaseComplete={(purchaseData: any) => {
+              if (address) {
+                const purchasedCharacters = purchaseData.purchasedCharacters;
+                const character = purchaseData.character;
+                setPlayerData((prev) => ({
+                  ...prev,
+                  name: character?.name ?? prev.name,
+                  purchasedCharacters: purchasedCharacters ?? prev.purchasedCharacters,
+                }));
+                if (character) setCharacter(character.imageSrc, character.name);
+                setBalanceRefreshKey((prev) => prev + 1);
+              }
+            }}
             level={playerData.level}
             characterImage={characterImage}
             characters={characters.length > 0 ? characters : undefined}
+            purchasedCharacters={playerData.purchasedCharacters}
             onApplyCharacter={async (character) => {
               if (address && character._id != null) {
                 const res = await gameAPI.updatePlayer(address, { characterId: character._id });
@@ -419,7 +440,9 @@ export default function Home() {
                   packs: p.packs ?? prev.packs,
                   energy: p.energy ?? prev.energy,
                 }));
-                if (p.character) setCharacter(p.character.imageSrc, p.character.name);
+                if (p.character) {
+                  setCharacter(p.character.imageSrc, p.character.name);
+                }
               }
             }}
           />

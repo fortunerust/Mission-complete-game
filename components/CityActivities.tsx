@@ -1,23 +1,21 @@
 import React from 'react';
-import ActivityCard, { Activity } from './ActivityCard';
-import { Map } from '@/types';
+import { Map, Mission } from '@/types';
+import ActivityCard from './ActivityCard';
 
 interface CityActivitiesProps {
-  activities: Activity[];
+  activities: Mission[];
   containerWidth: number;
   containerHeight: number;
-  selectedActivity: { activity: Activity; index: number } | null;
+  selectedActivity: { activity: Mission; index: number } | null;
   /** Ref attached to the expanded card root so parent can detect click-outside. */
   expandedCardRef?: React.RefObject<HTMLDivElement>;
   /** Current map (1 = Beach Side, 2 = Miami Nights, 3 = City Lights) for activity card positions. */
   currentMap?: Map;
-  onSelectActivity: (activity: Activity, index: number) => void;
+  onSelectActivity: (activity: Mission, index: number) => void;
   onCloseActivity: () => void;
   /** Called when user clicks start on an activity (e.g. open missions modal with that mission selected). */
-  onStartActivity?: (activity: Activity) => void;
+  onStartActivity?: (activity: Mission) => void;
 }
-
-export type { Activity };
 
 export default function CityActivities({
   activities,
@@ -57,7 +55,7 @@ export default function CityActivities({
               expandedRef={selectedActivity?.index === index ? expandedCardRef : undefined}
               onSelect={() => onSelectActivity(activity, index)}
               onClose={onCloseActivity}
-              onStart={(a) => onStartActivity?.(a)}
+              onStart={(a: Mission) => onStartActivity?.(a)}
             />
           ))}
         </div>
