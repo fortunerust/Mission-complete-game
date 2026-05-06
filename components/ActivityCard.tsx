@@ -34,10 +34,10 @@ const CARD_POSITIONS_BY_MAP: Record<number, { top: string; left: string }[]> = {
   ],
   // Map 3: CITY LIGHTS – fallback same as map 1
   3: [
-    { top: '18%', left: '44.7%' },
-    { top: '20.5%', left: '65%' },
-    { top: '38%', left: '81.5%' },
-    { top: '47%', left: '63.7%' },
+    { top: '25%', left: '73%' },
+    { top: '28%', left: '28%' },
+    { top: '61%', left: '68%' },
+    { top: '44%', left: '92%' },
   ],
 };
 
